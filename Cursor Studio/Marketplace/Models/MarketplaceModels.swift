@@ -72,6 +72,69 @@ nonisolated struct MarketplaceThemeDetails: Identifiable, Hashable, Codable, Sen
     var packageSHA256: String?
 }
 
+nonisolated struct MarketplaceCursorPreview:
+    Identifiable,
+    Hashable,
+    Sendable
+{
+    var id: CursorRole { role }
+    var role: CursorRole
+    var assetURL: URL
+    var animationStripURL: URL?
+    var pixelWidth: Int
+    var pixelHeight: Int
+    var frameCount: Int
+    var frameDuration: Double
+    var usesStaticAnimationFallback: Bool
+}
+
+nonisolated enum MarketplacePackagePreviewBuilder {
+    static func previews(
+        from package: ValidatedMarketplacePackage
+    ) -> [MarketplaceCursorPreview] {
+        package.manifest.cursors.compactMap { cursor in
+            guard let role = CursorRole(rawValue: cursor.role) else {
+                return nil
+            }
+            let frameCount = max(cursor.frameCount ?? 1, 1)
+            let usesStaticFallback =
+                cursor.usesStaticAnimationFallback == true || frameCount > 24
+            let preferredRepresentation = (cursor.representations ?? []).min {
+                let leftDistance = abs($0.scale - 2)
+                let rightDistance = abs($1.scale - 2)
+                if leftDistance == rightDistance {
+                    return $0.scale > $1.scale
+                }
+                return leftDistance < rightDistance
+            }
+            let animationStripURL =
+                frameCount > 1 && !usesStaticFallback
+                ? preferredRepresentation.map {
+                    package.rootDirectory.appending(path: $0.asset)
+                }
+                : nil
+
+            return MarketplaceCursorPreview(
+                role: role,
+                assetURL: package.rootDirectory.appending(
+                    path: cursor.asset
+                ),
+                animationStripURL: animationStripURL,
+                pixelWidth: cursor.pixelWidth,
+                pixelHeight: cursor.pixelHeight,
+                frameCount: frameCount,
+                frameDuration: max(cursor.frameDuration ?? 0, 1.0 / 60.0),
+                usesStaticAnimationFallback: usesStaticFallback
+            )
+        }
+        .sorted {
+            let left = CursorRole.allCases.firstIndex(of: $0.role) ?? 0
+            let right = CursorRole.allCases.firstIndex(of: $1.role) ?? 0
+            return left < right
+        }
+    }
+}
+
 nonisolated enum MarketplaceServiceError: LocalizedError, Equatable, Sendable {
     case configurationMissing
     case invalidResponse
@@ -121,6 +184,23 @@ nonisolated struct MarketplacePackageCursor: Codable, Hashable, Sendable {
     var pointHeight: Double?
     var hotspotX: Double
     var hotspotY: Double
+    // Optional so schema-v1 packages created before animation support continue
+    // to decode as static cursors.
+    var frameCount: Int? = nil
+    var frameDuration: Double? = nil
+    var representations: [MarketplacePackageRepresentation]? = nil
+    var usesStaticAnimationFallback: Bool? = nil
+}
+
+nonisolated struct MarketplacePackageRepresentation:
+    Codable,
+    Hashable,
+    Sendable
+{
+    var asset: String
+    var scale: Double
+    var pixelWidth: Int
+    var pixelHeight: Int
 }
 
 nonisolated enum MarketplaceCursorSizing {

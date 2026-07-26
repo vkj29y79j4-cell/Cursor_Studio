@@ -25,6 +25,13 @@ struct ThemeEditorView: View {
                                 assetURL: entry.flatMap {
                                     model.store.assetURL(for: $0, themeID: theme.id)
                                 },
+                                animation: entry.flatMap {
+                                    CursorAssetAnimation.preview(
+                                        for: $0,
+                                        themeID: theme.id,
+                                        paths: model.paths
+                                    )
+                                },
                                 isSelected: model.selectedRole == role,
                                 onSelect: {
                                     withAnimation(.easeOut(duration: 0.15)) {
@@ -85,6 +92,36 @@ struct ThemeEditorView: View {
                 OperationStatusView(state: model.operationState)
             }
 
+            HStack(spacing: 8) {
+                ThemeMetric(
+                    title: L10n.cursorCount(
+                        theme.entries.count,
+                        total: CursorRole.allCases.count
+                    ),
+                    systemImage: "square.grid.2x2"
+                )
+
+                let animatedCount = theme.entries.filter(\.isAnimated).count
+                if animatedCount > 0 {
+                    ThemeMetric(
+                        title: L10n.animatedCursorCount(animatedCount),
+                        systemImage: "play.circle.fill",
+                        color: .blue
+                    )
+                }
+
+                let fallbackCount = theme.entries.filter(
+                    \.usesStaticAnimationFallback
+                ).count
+                if fallbackCount > 0 {
+                    ThemeMetric(
+                        title: L10n.staticFallbackCount(fallbackCount),
+                        systemImage: "pause.circle.fill",
+                        color: .orange
+                    )
+                }
+            }
+
             if let metadata = theme.importMetadata {
                 HStack(spacing: 8) {
                     Label(metadata.sourceFormat, systemImage: "archivebox")
@@ -104,5 +141,23 @@ struct ThemeEditorView: View {
                 .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+private struct ThemeMetric: View {
+    let title: String
+    let systemImage: String
+    var color: Color = .secondary
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(
+                color.opacity(0.09),
+                in: Capsule(style: .continuous)
+            )
     }
 }

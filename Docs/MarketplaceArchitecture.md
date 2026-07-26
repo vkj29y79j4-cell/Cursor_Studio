@@ -127,9 +127,11 @@ Assets/
 ```
 
 `manifest.json` is declarative JSON. It may describe cursor roles, PNG assets,
-pixel sizes, hotspots, and a schema version. Listing previews are uploaded
-separately to `theme-previews`; they are not trusted as installable assets. The
-package
+pixel sizes, hotspots, frame count and duration, and up to eight PNG
+representation strips per cursor. Animation fields are optional so packages
+created before Marketplace animation support still install as static cursors.
+Listing previews are uploaded separately to `theme-previews`; they are not
+trusted as installable assets. The package
 must not contain scripts, executable files, plug-ins, dylibs, shell commands,
 URLs to load at install time, or arbitrary file references.
 
@@ -178,6 +180,13 @@ Implementations:
 
 Models used by Marketplace are separate from local `CursorTheme` persistence
 models. A validated installer is the only conversion boundary.
+
+Opening a theme's native details sheet downloads and validates the same package
+that would be installed, then builds the cursor gallery from its manifest and
+decoded PNG files. A short-lived extraction lease keeps those files available
+while the sheet is open; switching themes or releasing the view model removes
+them. Animated representation strips play in-place, while preview failures stay
+nonblocking so cached listing details remain usable.
 
 ## Offline and failure behavior
 

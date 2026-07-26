@@ -74,6 +74,47 @@ nonisolated struct MarketplacePackageBuilder: @unchecked Sendable {
                     [.posixPermissions: 0o644],
                     ofItemAtPath: destinationURL.path
                 )
+
+                var manifestRepresentations: [
+                    MarketplacePackageRepresentation
+                ] = []
+                for (index, representation) in entry.representations.enumerated() {
+                    guard let representationURL = paths.assetURL(
+                        themeID: theme.id,
+                        filename: representation.filename
+                    ),
+                    fileManager.fileExists(atPath: representationURL.path) else {
+                        throw MarketplaceBackendError.invalidInput(
+                            L10n.publishMissingAsset(representation.filename)
+                        )
+                    }
+                    try validatePNG(at: representationURL)
+                    let representationFilename = [
+                        entry.role.rawValue,
+                        "representation",
+                        String(index + 1),
+                    ].joined(separator: "-") + ".png"
+                    let representationDestination = assetsDirectory.appending(
+                        path: representationFilename
+                    )
+                    try fileManager.copyItem(
+                        at: representationURL,
+                        to: representationDestination
+                    )
+                    try fileManager.setAttributes(
+                        [.posixPermissions: 0o644],
+                        ofItemAtPath: representationDestination.path
+                    )
+                    manifestRepresentations.append(
+                        MarketplacePackageRepresentation(
+                            asset: "Assets/\(representationFilename)",
+                            scale: representation.scale,
+                            pixelWidth: representation.pixelWidth,
+                            pixelHeight: representation.pixelHeight
+                        )
+                    )
+                }
+
                 manifestCursors.append(
                     MarketplacePackageCursor(
                         role: entry.role.rawValue,
@@ -83,7 +124,12 @@ nonisolated struct MarketplacePackageBuilder: @unchecked Sendable {
                         pointWidth: entry.pointWidth,
                         pointHeight: entry.pointHeight,
                         hotspotX: entry.hotspot.normalizedX,
-                        hotspotY: entry.hotspot.normalizedY
+                        hotspotY: entry.hotspot.normalizedY,
+                        frameCount: entry.frameCount,
+                        frameDuration: entry.frameDuration,
+                        representations: manifestRepresentations,
+                        usesStaticAnimationFallback:
+                            entry.usesStaticAnimationFallback
                     )
                 )
             }

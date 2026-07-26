@@ -28,27 +28,52 @@ struct CursorInspectorView: View {
                     Divider()
 
                     if entry.isAnimated {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label(
-                                L10n.frameCount(entry.frameCount),
-                                systemImage: entry.usesStaticAnimationFallback
-                                    ? "pause.circle"
-                                    : "play.circle"
+                        HStack(spacing: 14) {
+                            CursorAssetView(
+                                url: assetURL,
+                                animation: CursorAssetAnimation.preview(
+                                    for: entry,
+                                    themeID: themeID,
+                                    paths: model.paths
+                                ),
+                                maximumSize: 72,
+                                fallbackSymbol: model.selectedRole.symbolName
                             )
-                            .font(.headline)
+                            .padding(8)
+                            .background(
+                                Color(nsColor: .controlBackgroundColor),
+                                in: RoundedRectangle(
+                                    cornerRadius: 12,
+                                    style: .continuous
+                                )
+                            )
 
-                            Text(
-                                entry.usesStaticAnimationFallback
-                                    ? entry.animationFallbackReason
-                                        ?? L10n.firstFrameUsed
-                                    : L10n.frameDuration(
-                                        entry.frameDuration.formatted(
-                                            .number.precision(.fractionLength(0...3))
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(L10n.livePreview)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                Label(
+                                    L10n.frameCount(entry.frameCount),
+                                    systemImage: entry.usesStaticAnimationFallback
+                                        ? "pause.circle"
+                                        : "play.circle"
+                                )
+                                .font(.headline)
+
+                                Text(
+                                    entry.usesStaticAnimationFallback
+                                        ? entry.animationFallbackReason
+                                            ?? L10n.firstFrameUsed
+                                        : L10n.frameDuration(
+                                            entry.frameDuration.formatted(
+                                                .number.precision(.fractionLength(0...3))
+                                            )
                                         )
-                                    )
-                            )
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                                )
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            }
                         }
 
                         Divider()

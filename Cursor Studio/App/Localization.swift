@@ -129,7 +129,6 @@ nonisolated enum L10n {
         "The first frame is used.",
         "Используется первый кадр."
     )
-
     static let hotspot = text("Hotspot", "Активная точка")
     static let hotspotEditor = text(
         "Hotspot editor",
@@ -167,6 +166,7 @@ nonisolated enum L10n {
         "Static fallback",
         "Статический вариант"
     )
+    static let staticCursor = text("Static", "Статический")
     static let mappedCursorRoles = text(
         "Mapped cursor roles",
         "Сопоставленные роли курсоров"
@@ -617,10 +617,31 @@ nonisolated enum L10n {
     static let onboardingPage = text("Welcome guide page", "Страница вводного руководства")
 
     static let searchThemes = text("Search themes", "Поиск тем")
+    static let searchLibrary = text(
+        "Search library",
+        "Поиск в библиотеке"
+    )
+    static let noMatchingThemes = text(
+        "No matching themes",
+        "Подходящих тем нет"
+    )
     static let featured = text("Featured", "Рекомендуемые")
     static let recent = text("Recent", "Новые")
     static let popular = text("Popular", "Популярные")
     static let allCategories = text("All Categories", "Все категории")
+    static let searchResults = text("Search Results", "Результаты поиска")
+    static func marketplaceThemeCount(_ count: Int) -> String {
+        if isRussian {
+            let noun = russianForm(
+                count,
+                one: "тема",
+                few: "темы",
+                many: "тем"
+            )
+            return "\(count) \(noun)"
+        }
+        return count == 1 ? "1 theme" : "\(count) themes"
+    }
     static let verified = text("Verified", "Проверено")
     static let compatible = text("Compatible", "Совместимо")
     static let incompatible = text("Incompatible", "Несовместимо")
@@ -684,6 +705,18 @@ nonisolated enum L10n {
     )
     static let viewDetails = text("View Details", "Подробнее")
     static let includedCursors = text("Included cursors", "Курсоры в комплекте")
+    static let cursorPackPreview = text(
+        "Cursor pack preview",
+        "Предпросмотр курсоров из пака"
+    )
+    static let loadingCursorPreviews = text(
+        "Loading and validating cursor previews…",
+        "Загрузка и проверка предпросмотра курсоров…"
+    )
+    static let cursorPreviewUnavailable = text(
+        "Cursor previews are unavailable.",
+        "Предпросмотр курсоров недоступен."
+    )
     static let installComplete = text(
         "Theme installed",
         "Тема установлена"
@@ -778,6 +811,20 @@ nonisolated enum L10n {
         return "\(count) \(russianForm(count, one: "кадр", few: "кадра", many: "кадров"))"
     }
 
+    static func animatedCursorCount(_ count: Int) -> String {
+        if !isRussian {
+            return count == 1 ? "\(count) animated" : "\(count) animated"
+        }
+        return "\(count) аним."
+    }
+
+    static func staticFallbackCount(_ count: Int) -> String {
+        text(
+            count == 1 ? "1 static fallback" : "\(count) static fallbacks",
+            "\(count) статич."
+        )
+    }
+
     static func importNoteCount(_ count: Int) -> String {
         if !isRussian {
             return count == 1 ? "1 import note" : "\(count) import notes"
@@ -824,6 +871,8 @@ nonisolated enum L10n {
     static func frameDuration(_ seconds: String) -> String {
         text("Frame duration: \(seconds) seconds", "Длительность кадра: \(seconds) с")
     }
+
+    static let livePreview = text("Live preview", "Живой предпросмотр")
 
     static func animationHelp(frameCount: Int, fallback: Bool) -> String {
         fallback

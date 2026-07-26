@@ -185,13 +185,27 @@ final class SystemCursorAbstractionTests: XCTestCase {
         try store.load()
         let theme = try XCTUnwrap(store.themes.first)
         try store.setActiveThemeID(theme.id)
+        let defaultsSuite =
+            "CursorStudioTerminationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(
+            UserDefaults(suiteName: defaultsSuite)
+        )
+        defer {
+            defaults.removePersistentDomain(forName: defaultsSuite)
+        }
+        let preferences = AppPreferences(
+            defaults: defaults,
+            launchAtLoginOverride: false
+        )
+        preferences.keepCursorActiveAfterAppQuit = false
         let mock = MockSystemCursorApplier()
         let model = AppViewModel(
             paths: paths,
             store: store,
             importer: ImageImportService(paths: paths),
             cursorApplier: mock,
-            diagnostics: DiagnosticLogger(paths: paths)
+            diagnostics: DiagnosticLogger(paths: paths),
+            preferences: preferences
         )
 
         model.prepareForApplicationTermination()

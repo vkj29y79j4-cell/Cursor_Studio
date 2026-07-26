@@ -4,6 +4,7 @@ struct CursorRoleCard: View {
     let role: CursorRole
     let entry: CursorEntry?
     let assetURL: URL?
+    let animation: CursorAssetAnimation?
     let isSelected: Bool
     let onSelect: () -> Void
     let onDrop: (URL) -> Void
@@ -43,6 +44,7 @@ struct CursorRoleCard: View {
                     Spacer()
                     CursorAssetView(
                         url: assetURL,
+                        animation: animation,
                         maximumSize: 76,
                         fallbackSymbol: role.symbolName
                     )

@@ -9,6 +9,8 @@ actor MarketplacePackageValidator {
     private static let maximumFileCount = 256
     private static let maximumManifestBytes = 1 * 1_024 * 1_024
     private static let maximumDecodedPixels = 32_000_000
+    private static let maximumRepresentationCount = 8
+    private static let maximumFrameCount = 512
 
     private let fileManager: FileManager
     private let stagingDirectory: URL
@@ -278,6 +280,11 @@ actor MarketplacePackageValidator {
         var roles: Set<CursorRole> = []
         var referencedAssets: Set<String> = []
         for cursor in manifest.cursors {
+            let frameCount = cursor.frameCount ?? 1
+            let frameDuration = cursor.frameDuration ?? 0
+            let representations = cursor.representations ?? []
+            let usesStaticFallback =
+                cursor.usesStaticAnimationFallback ?? false
             guard let role = CursorRole(rawValue: cursor.role),
                   roles.insert(role).inserted,
                   cursor.hotspotX.isFinite,
@@ -285,8 +292,17 @@ actor MarketplacePackageValidator {
                   0...1 ~= cursor.hotspotX,
                   0...1 ~= cursor.hotspotY,
                   cursor.pointWidth.map({ $0.isFinite && $0 > 0 }) ?? true,
-                  cursor.pointHeight.map({ $0.isFinite && $0 > 0 }) ?? true else {
-                throw invalid("A cursor role or hotspot is invalid.")
+                  cursor.pointHeight.map({ $0.isFinite && $0 > 0 }) ?? true,
+                  1...Self.maximumFrameCount ~= frameCount,
+                  frameDuration.isFinite,
+                  frameDuration >= 0,
+                  representations.count <= Self.maximumRepresentationCount,
+                  !usesStaticFallback || frameCount > 1,
+                  frameCount <= 24 || usesStaticFallback,
+                  frameCount == 1
+                    || usesStaticFallback
+                    || !representations.isEmpty else {
+                throw invalid("A cursor manifest entry is invalid.")
             }
             try validateRelativePath(cursor.asset)
             let key = cursor.asset.precomposedStringWithCanonicalMapping
@@ -301,6 +317,35 @@ actor MarketplacePackageValidator {
                 expectedWidth: cursor.pixelWidth,
                 expectedHeight: cursor.pixelHeight
             )
+
+            for representation in representations {
+                guard representation.scale.isFinite,
+                      representation.scale > 0,
+                      representation.pixelWidth > 0,
+                      representation.pixelHeight > 0,
+                      representation.pixelHeight.isMultiple(of: frameCount)
+                else {
+                    throw invalid(
+                        "A cursor representation has invalid animation metadata."
+                    )
+                }
+                try validateRelativePath(representation.asset)
+                let representationKey = representation.asset
+                    .precomposedStringWithCanonicalMapping
+                    .lowercased()
+                guard representationKey.hasPrefix("assets/"),
+                      referencedAssets.insert(representationKey).inserted,
+                      let representationURL = files[representationKey] else {
+                    throw invalid(
+                        "A cursor representation is missing or duplicated."
+                    )
+                }
+                try validatePNG(
+                    at: representationURL,
+                    expectedWidth: representation.pixelWidth,
+                    expectedHeight: representation.pixelHeight
+                )
+            }
         }
         return manifest
     }

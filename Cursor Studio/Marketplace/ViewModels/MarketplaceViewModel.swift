@@ -14,6 +14,9 @@ final class MarketplaceViewModel: ObservableObject {
     @Published private(set) var installProgress: Double?
     @Published private(set) var installingThemeID: UUID?
     @Published private(set) var installedThemeID: UUID?
+    @Published private(set) var cursorPreviews: [MarketplaceCursorPreview] = []
+    @Published private(set) var isLoadingCursorPreviews = false
+    @Published private(set) var cursorPreviewMessage: String?
 
     let usesMockService: Bool
 
@@ -25,6 +28,9 @@ final class MarketplaceViewModel: ObservableObject {
     private var installTask: Task<Void, Never>?
     private var detailsTask: Task<Void, Never>?
     private var lastInstallTheme: MarketplaceTheme?
+    private var previewLease: MarketplacePackagePreviewLease?
+    private var previewThemeID: UUID?
+    private var detailsRequestID = UUID()
 
     init(
         store: ThemeStore,
@@ -72,16 +78,42 @@ final class MarketplaceViewModel: ObservableObject {
 
     func openDetails(for theme: MarketplaceTheme) {
         selectedTheme = theme
+        if previewThemeID == theme.id,
+           details?.theme.id == theme.id,
+           !cursorPreviews.isEmpty {
+            return
+        }
         details = nil
         detailsTask?.cancel()
+        let requestID = UUID()
+        detailsRequestID = requestID
+        previewLease = nil
+        previewThemeID = nil
+        cursorPreviews = []
+        cursorPreviewMessage = nil
+        isLoadingCursorPreviews = true
         detailsTask = Task { [weak self] in
             guard let self else { return }
             do {
-                self.details = try await self.service.themeDetails(id: theme.id)
+                let details = try await self.service.themeDetails(id: theme.id)
+                try Task.checkCancellation()
+                guard self.detailsRequestID == requestID else { return }
+                self.details = details
+                await self.loadCursorPreviews(
+                    for: theme,
+                    expectedSHA256: details.packageSHA256,
+                    requestID: requestID
+                )
             } catch is CancellationError {
+                if self.detailsRequestID == requestID {
+                    self.isLoadingCursorPreviews = false
+                }
                 return
             } catch {
-                self.errorMessage = error.localizedDescription
+                if self.detailsRequestID == requestID {
+                    self.isLoadingCursorPreviews = false
+                    self.errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -173,6 +205,80 @@ final class MarketplaceViewModel: ObservableObject {
         errorMessage = nil
     }
 
+    private func loadCursorPreviews(
+        for theme: MarketplaceTheme,
+        expectedSHA256: String?,
+        requestID: UUID
+    ) async {
+        var downloadedURL: URL?
+        var cleanupURL: URL?
+        do {
+            let packageURL = try await service.downloadTheme(id: theme.id)
+            downloadedURL = packageURL
+            try Task.checkCancellation()
+
+            let validated = try await validator.validatePackage(
+                at: packageURL,
+                expectedSHA256: expectedSHA256
+            )
+            cleanupURL = validated.cleanupDirectory
+            try Task.checkCancellation()
+            guard detailsRequestID == requestID else {
+                throw CancellationError()
+            }
+
+            let previews = MarketplacePackagePreviewBuilder.previews(
+                from: validated
+            )
+            guard !previews.isEmpty else {
+                throw MarketplaceServiceError.packageInvalid(
+                    L10n.text(
+                        "The package has no cursor previews.",
+                        "В пакете нет курсоров для предпросмотра."
+                    )
+                )
+            }
+
+            let lease = MarketplacePackagePreviewLease(
+                previews: previews,
+                cleanupURL: cleanupURL
+            )
+            cleanupURL = nil
+            if let downloadedURL,
+               downloadedURL.standardizedFileURL
+                != validated.rootDirectory.standardizedFileURL {
+                try? FileManager.default.removeItem(at: downloadedURL)
+            }
+            self.previewLease = lease
+            self.previewThemeID = theme.id
+            self.cursorPreviews = previews
+            self.cursorPreviewMessage = nil
+            self.isLoadingCursorPreviews = false
+        } catch is CancellationError {
+            if let cleanupURL {
+                try? FileManager.default.removeItem(at: cleanupURL)
+            } else if let downloadedURL {
+                try? FileManager.default.removeItem(at: downloadedURL)
+            }
+            if detailsRequestID == requestID {
+                isLoadingCursorPreviews = false
+            }
+        } catch {
+            if let cleanupURL {
+                try? FileManager.default.removeItem(at: cleanupURL)
+            } else if let downloadedURL {
+                try? FileManager.default.removeItem(at: downloadedURL)
+            }
+            if detailsRequestID == requestID {
+                cursorPreviewMessage = L10n.text(
+                    "Cursor previews are unavailable: \(error.localizedDescription)",
+                    "Предпросмотр курсоров недоступен: \(error.localizedDescription)"
+                )
+                isLoadingCursorPreviews = false
+            }
+        }
+    }
+
     private func performSearch() async {
         isLoading = themes.isEmpty
         errorMessage = nil
@@ -208,5 +314,25 @@ final class MarketplaceViewModel: ObservableObject {
             filters.verifiedOnly.description,
             filters.contentLanguage.resolvedAppLanguage.rawValue,
         ].joined(separator: "|")
+    }
+}
+
+@MainActor
+private final class MarketplacePackagePreviewLease {
+    let previews: [MarketplaceCursorPreview]
+    private let cleanupURL: URL?
+
+    init(
+        previews: [MarketplaceCursorPreview],
+        cleanupURL: URL?
+    ) {
+        self.previews = previews
+        self.cleanupURL = cleanupURL
+    }
+
+    deinit {
+        if let cleanupURL {
+            try? FileManager.default.removeItem(at: cleanupURL)
+        }
     }
 }

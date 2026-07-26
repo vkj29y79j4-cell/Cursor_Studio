@@ -4,29 +4,16 @@ struct MarketplaceView: View {
     @ObservedObject var appModel: AppViewModel
     @ObservedObject var model: MarketplaceViewModel
     @ObservedObject var preferences: AppPreferences
-    @State private var showsAccount = false
+    let onShowAccount: () -> Void
 
     private let columns = [
-        GridItem(.adaptive(minimum: 250, maximum: 340), spacing: 18),
+        GridItem(.adaptive(minimum: 250, maximum: 360), spacing: 16),
     ]
-
-    private var categories: [String] {
-        [
-            L10n.text("Minimal", "Минимализм"),
-            L10n.text("Colorful", "Яркие"),
-            L10n.text("Pixel Art", "Пиксель-арт"),
-            L10n.text("Accessibility", "Универсальный доступ"),
-            L10n.text("Professional", "Профессиональные"),
-            L10n.text("Animated", "Анимированные"),
-        ]
-    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 header
-
-                categoryStrip
 
                 if model.isLoading {
                     HStack {
@@ -37,7 +24,10 @@ struct MarketplaceView: View {
                     .frame(minHeight: 300)
                 } else if model.themes.isEmpty {
                     ContentUnavailableView {
-                        Label(L10n.marketplaceEmptyTitle, systemImage: "magnifyingglass")
+                        Label(
+                            L10n.marketplaceEmptyTitle,
+                            systemImage: "magnifyingglass"
+                        )
                     } description: {
                         Text(
                             model.query.isEmpty && model.filters.category == nil
@@ -55,30 +45,37 @@ struct MarketplaceView: View {
                     }
                     .frame(minHeight: 320)
                 } else {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                    LazyVGrid(
+                        columns: columns,
+                        alignment: .leading,
+                        spacing: 16
+                    ) {
                         ForEach(model.themes) { theme in
                             MarketplaceThemeCard(
                                 theme: theme,
-                                isInstalling: model.installingThemeID == theme.id,
-                                installProgress: model.installingThemeID == theme.id
+                                isInstalling:
+                                    model.installingThemeID == theme.id,
+                                installProgress:
+                                    model.installingThemeID == theme.id
                                     ? model.installProgress
                                     : nil,
-                                onDetails: { model.openDetails(for: theme) },
-                                onInstall: { model.install(theme) },
+                                onDetails: {
+                                    model.openDetails(for: theme)
+                                },
+                                onInstall: {
+                                    model.install(theme)
+                                },
                                 onCancel: model.cancelInstall
                             )
                         }
                     }
                 }
             }
-            .padding(28)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
         .navigationTitle(L10n.marketplace)
-        .searchable(
-            text: $model.query,
-            placement: .toolbar,
-            prompt: L10n.searchThemes
-        )
         .onChange(of: model.query) {
             model.search()
         }
@@ -89,7 +86,9 @@ struct MarketplaceView: View {
             model.updatePreferences(preferences)
         }
         .onChange(of: model.installedThemeID) {
-            guard let installedThemeID = model.installedThemeID else { return }
+            guard let installedThemeID = model.installedThemeID else {
+                return
+            }
             appModel.selectedThemeID = installedThemeID
             appModel.selectedSection = .library
             appModel.operationState = .success(L10n.installComplete)
@@ -98,29 +97,48 @@ struct MarketplaceView: View {
         .task {
             model.load()
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    model.search(immediately: true)
+                } label: {
+                    Label(
+                        L10n.refresh,
+                        systemImage: "arrow.clockwise"
+                    )
+                }
+                .help(L10n.refresh)
+
+                Button(action: onShowAccount) {
+                    Label(
+                        appModel.marketplaceAccount.profile?.displayName
+                            ?? (
+                                appModel.marketplaceAccount.isSignedIn
+                                    ? L10n.profile
+                                    : L10n.creatorCenter
+                            ),
+                        systemImage:
+                            appModel.marketplaceAccount.isModerator
+                            ? "checkmark.shield.fill"
+                            : "person.crop.circle"
+                    )
+                }
+                .help(L10n.creatorCenter)
+            }
+        }
         .sheet(item: $model.selectedTheme) { theme in
             MarketplaceThemeDetailView(
                 theme: theme,
                 details: model.details,
+                cursorPreviews: model.cursorPreviews,
+                isLoadingCursorPreviews: model.isLoadingCursorPreviews,
+                cursorPreviewMessage: model.cursorPreviewMessage,
                 isInstalling: model.installingThemeID == theme.id,
                 installProgress: model.installingThemeID == theme.id
                     ? model.installProgress
                     : nil,
                 onInstall: { model.install(theme) },
                 onCancel: model.cancelInstall
-            )
-        }
-        .sheet(
-            isPresented: $showsAccount,
-            onDismiss: {
-                model.search(immediately: true)
-            }
-        ) {
-            MarketplaceAccountView(
-                appModel: appModel,
-                model: appModel.marketplaceAccount,
-                localThemes: appModel.store.themes,
-                selectedThemeID: appModel.selectedThemeID
             )
         }
         .alert(
@@ -142,94 +160,45 @@ struct MarketplaceView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 14) {
-                Image(systemName: "storefront.fill")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.tint)
-                    .frame(width: 48, height: 48)
-                    .background(
-                        Color.accentColor.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 13)
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(contentTitle)
+                    .font(.title2.weight(.semibold))
+
+                Text(
+                    L10n.marketplaceThemeCount(
+                        model.themes.count
                     )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L10n.marketplace)
-                        .font(.largeTitle.bold())
-                    Text(L10n.marketplaceSubtitle)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Button {
-                    showsAccount = true
-                } label: {
-                    Label(
-                        appModel.marketplaceAccount.profile?.displayName
-                            ?? (
-                                appModel.marketplaceAccount.isSignedIn
-                                    ? L10n.profile
-                                    : L10n.signIn
-                            ),
-                        systemImage: appModel.marketplaceAccount.isModerator
-                            ? "checkmark.shield.fill"
-                            : "person.crop.circle"
-                    )
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .help(L10n.creatorCenter)
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
             }
 
-            HStack {
-                catalogStatus
+            Spacer()
 
-                if model.filters.verifiedOnly {
-                    Label(L10n.verifiedOnly, systemImage: "checkmark.seal.fill")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.blue)
-                }
+            catalogStatus
+                .font(.caption)
 
-                Spacer()
-
-                Text(L10n.sort)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Picker(
-                    L10n.sort,
-                    selection: $model.filters.sort
-                ) {
-                    ForEach(MarketplaceSort.allCases, id: \.rawValue) { sort in
-                        Text(sort.displayName).tag(sort)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 280)
-                .onChange(of: model.filters.sort) {
-                    model.search(immediately: true)
-                }
+            if model.filters.verifiedOnly {
+                Label(
+                    L10n.verifiedOnly,
+                    systemImage: "checkmark.seal.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.blue)
             }
         }
-        .padding(20)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color.accentColor.opacity(0.10),
-                    Color.purple.opacity(0.05),
-                    Color(nsColor: .controlBackgroundColor),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor))
+        .padding(.bottom, 2)
+    }
+
+    private var contentTitle: String {
+        if !model.query.isEmpty {
+            return L10n.searchResults
         }
+        if let category = model.filters.category {
+            return category
+        }
+        return model.filters.sort.displayName
     }
 
     @ViewBuilder
@@ -258,35 +227,6 @@ struct MarketplaceView: View {
         model.filters.verifiedOnly = false
         preferences.verifiedOnly = false
         model.search(immediately: true)
-    }
-
-    private var categoryStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                categoryButton(
-                    title: L10n.allCategories,
-                    category: nil
-                )
-                ForEach(categories, id: \.self) { category in
-                    categoryButton(title: category, category: category)
-                }
-            }
-            .padding(.vertical, 1)
-        }
-    }
-
-    private func categoryButton(
-        title: String,
-        category: String?
-    ) -> some View {
-        Button(title) {
-            model.selectCategory(category)
-        }
-        .buttonStyle(
-            MarketplaceCategoryButtonStyle(
-                isSelected: model.filters.category == category
-            )
-        )
     }
 }
 
@@ -343,9 +283,12 @@ private struct MarketplaceThemeCard: View {
             Divider()
 
             HStack {
-                Label(theme.creatorName, systemImage: "person.crop.circle")
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
+                Label(
+                    theme.creatorName,
+                    systemImage: "person.crop.circle"
+                )
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
 
                 Spacer()
 
@@ -365,20 +308,30 @@ private struct MarketplaceThemeCard: View {
                     Button(L10n.install, action: onInstall)
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
-                        .disabled(theme.compatibility == .incompatible)
+                        .disabled(
+                            theme.compatibility == .incompatible
+                        )
                 }
             }
         }
         .padding(14)
         .background(
             Color(nsColor: .controlBackgroundColor),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            in: RoundedRectangle(
+                cornerRadius: 10,
+                style: .continuous
+            )
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            RoundedRectangle(
+                cornerRadius: 10,
+                style: .continuous
+            )
+            .stroke(
+                Color(nsColor: .separatorColor),
+                lineWidth: 1
+            )
         }
-        .shadow(color: .black.opacity(0.045), radius: 8, y: 3)
     }
 
     private var compatibilitySymbol: String {
@@ -430,7 +383,12 @@ private struct MarketplacePreview: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 150)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 10,
+                style: .continuous
+            )
+        )
         .accessibilityHidden(true)
     }
 }
@@ -438,11 +396,21 @@ private struct MarketplacePreview: View {
 private struct MarketplaceThemeDetailView: View {
     let theme: MarketplaceTheme
     let details: MarketplaceThemeDetails?
+    let cursorPreviews: [MarketplaceCursorPreview]
+    let isLoadingCursorPreviews: Bool
+    let cursorPreviewMessage: String?
     let isInstalling: Bool
     let installProgress: Double?
     let onInstall: () -> Void
     let onCancel: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    private let previewColumns = [
+        GridItem(
+            .adaptive(minimum: 128, maximum: 165),
+            spacing: 12
+        ),
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -455,44 +423,110 @@ private struct MarketplaceThemeDetailView: View {
                         Text(theme.title)
                             .font(.title.bold())
                         if theme.isVerified {
-                            Label(L10n.verified, systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(.blue)
+                            Label(
+                                L10n.verified,
+                                systemImage: "checkmark.seal.fill"
+                            )
+                            .foregroundStyle(.blue)
                         }
                     }
 
                     Label(
                         theme.compatibility.displayName,
-                        systemImage: theme.compatibility == .compatible
+                        systemImage:
+                            theme.compatibility == .compatible
                             ? "checkmark.circle.fill"
                             : "exclamationmark.triangle.fill"
                     )
                     .foregroundStyle(
-                        theme.compatibility == .compatible ? .green : .orange
+                        theme.compatibility == .compatible
+                            ? .green
+                            : .orange
                     )
 
                     if let details {
                         Text(details.description)
                             .foregroundStyle(.secondary)
 
-                        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                        Grid(
+                            alignment: .leading,
+                            horizontalSpacing: 18,
+                            verticalSpacing: 8
+                        ) {
                             GridRow {
-                                Text(L10n.creator).foregroundStyle(.secondary)
+                                Text(L10n.creator)
+                                    .foregroundStyle(.secondary)
                                 Text(theme.creatorName)
                             }
                             GridRow {
-                                Text(L10n.category).foregroundStyle(.secondary)
+                                Text(L10n.category)
+                                    .foregroundStyle(.secondary)
                                 Text(theme.category)
                             }
                             GridRow {
-                                Text(L10n.version).foregroundStyle(.secondary)
+                                Text(L10n.version)
+                                    .foregroundStyle(.secondary)
                                 Text(details.semanticVersion)
                             }
                         }
 
-                        Text(L10n.includedCursors)
+                        Divider()
+
+                        Text(L10n.cursorPackPreview)
                             .font(.headline)
-                        Text(details.includedRoles.joined(separator: " · "))
+
+                        if isLoadingCursorPreviews {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text(L10n.loadingCursorPreviews)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: 90,
+                                alignment: .center
+                            )
+                        } else if !cursorPreviews.isEmpty {
+                            LazyVGrid(
+                                columns: previewColumns,
+                                alignment: .leading,
+                                spacing: 12
+                            ) {
+                                ForEach(cursorPreviews) { preview in
+                                    MarketplaceCursorPreviewCard(
+                                        preview: preview
+                                    )
+                                }
+                            }
+                        } else {
+                            Label(
+                                cursorPreviewMessage
+                                    ?? L10n.cursorPreviewUnavailable,
+                                systemImage:
+                                    "exclamationmark.triangle"
+                            )
+                            .font(.callout)
                             .foregroundStyle(.secondary)
+                            .frame(
+                                maxWidth: .infinity,
+                                alignment: .leading
+                            )
+                            .padding(12)
+                            .background(
+                                Color(nsColor: .controlBackgroundColor),
+                                in: RoundedRectangle(cornerRadius: 10)
+                            )
+
+                            Text(L10n.includedCursors)
+                                .font(.headline)
+                            Text(
+                                details.includedRoles.joined(
+                                    separator: " · "
+                                )
+                            )
+                            .foregroundStyle(.secondary)
+                        }
                     } else {
                         ProgressView()
                             .frame(maxWidth: .infinity)
@@ -524,31 +558,87 @@ private struct MarketplaceThemeDetailView: View {
             }
             .padding(16)
         }
-        .frame(width: 600, height: 680)
+        .frame(width: 740, height: 760)
     }
 }
 
-private struct MarketplaceCategoryButtonStyle: ButtonStyle {
-    let isSelected: Bool
+private struct MarketplaceCursorPreviewCard: View {
+    let preview: MarketplaceCursorPreview
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.callout.weight(.medium))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                isSelected
-                    ? Color.accentColor.opacity(configuration.isPressed ? 0.24 : 0.16)
-                    : Color(nsColor: .controlBackgroundColor),
-                in: Capsule()
+    private var animation: CursorAssetAnimation? {
+        guard let animationStripURL = preview.animationStripURL else {
+            return nil
+        }
+        return CursorAssetAnimation(
+            stripURL: animationStripURL,
+            frameCount: preview.frameCount,
+            frameDuration: preview.frameDuration
+        )
+    }
+
+    var body: some View {
+        VStack(spacing: 9) {
+            CursorAssetView(
+                url: preview.assetURL,
+                animation: animation,
+                maximumSize: 66,
+                fallbackSymbol: preview.role.symbolName
             )
-            .overlay {
-                Capsule()
-                    .stroke(
-                        isSelected
-                            ? Color.accentColor
-                            : Color(nsColor: .separatorColor)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 10)
+
+            VStack(spacing: 3) {
+                Text(preview.role.displayName)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+
+                Text(
+                    L10n.pixelSize(
+                        width: preview.pixelWidth,
+                        height: preview.pixelHeight
                     )
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+                if preview.frameCount > 1 {
+                    Label(
+                        L10n.frameCount(preview.frameCount),
+                        systemImage:
+                            preview.usesStaticAnimationFallback
+                            ? "pause.circle"
+                            : "play.circle.fill"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(
+                        preview.usesStaticAnimationFallback
+                            ? .orange
+                            : .blue
+                    )
+                } else {
+                    Text(L10n.staticCursor)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .frame(minHeight: 50, alignment: .top)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .background(
+            Color(nsColor: .controlBackgroundColor),
+            in: RoundedRectangle(
+                cornerRadius: 12,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: 12,
+                style: .continuous
+            )
+            .stroke(Color(nsColor: .separatorColor))
+        }
+        .accessibilityElement(children: .combine)
     }
 }

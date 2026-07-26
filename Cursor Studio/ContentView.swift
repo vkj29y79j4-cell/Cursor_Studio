@@ -6,6 +6,8 @@ struct ContentView: View {
     @ObservedObject var model: AppViewModel
     @StateObject private var marketplaceModel: MarketplaceViewModel
     @State private var isImporterPresented = false
+    @State private var isMarketplaceAccountPresented = false
+    @State private var libraryQuery = ""
     @State private var hasLoaded = false
 
     init(model: AppViewModel) {
@@ -21,7 +23,14 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            ThemeSidebarView(model: model)
+            ThemeSidebarView(
+                model: model,
+                marketplaceModel: marketplaceModel,
+                libraryQuery: libraryQuery,
+                onShowMarketplaceAccount: {
+                    isMarketplaceAccountPresented = true
+                }
+            )
         } detail: {
             switch model.selectedSection {
             case .library:
@@ -47,11 +56,22 @@ struct ContentView: View {
                 MarketplaceView(
                     appModel: model,
                     model: marketplaceModel,
-                    preferences: model.preferences
+                    preferences: model.preferences,
+                    onShowAccount: {
+                        isMarketplaceAccountPresented = true
+                    }
                 )
             }
         }
         .frame(minWidth: 1_020, minHeight: 680)
+        .navigationSplitViewStyle(.balanced)
+        .searchable(
+            text: activeSearchText,
+            placement: .toolbar,
+            prompt: model.selectedSection == .library
+                ? L10n.searchLibrary
+                : L10n.searchThemes
+        )
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if model.selectedSection == .library {
@@ -135,6 +155,19 @@ struct ContentView: View {
         .sheet(isPresented: $model.isPrivacyPresented) {
             PrivacyView()
         }
+        .sheet(
+            isPresented: $isMarketplaceAccountPresented,
+            onDismiss: {
+                marketplaceModel.search(immediately: true)
+            }
+        ) {
+            MarketplaceAccountView(
+                appModel: model,
+                model: model.marketplaceAccount,
+                localThemes: model.store.themes,
+                selectedThemeID: model.selectedThemeID
+            )
+        }
         .sheet(item: $model.themeImportDraft) { draft in
             ThemeImportReviewView(
                 draft: draft,
@@ -172,6 +205,20 @@ struct ContentView: View {
             )
         ) { _ in
             model.prepareForApplicationTermination()
+        }
+    }
+
+    private var activeSearchText: Binding<String> {
+        Binding {
+            model.selectedSection == .library
+                ? libraryQuery
+                : marketplaceModel.query
+        } set: { value in
+            if model.selectedSection == .library {
+                libraryQuery = value
+            } else {
+                marketplaceModel.query = value
+            }
         }
     }
 }

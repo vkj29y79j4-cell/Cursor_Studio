@@ -1,3 +1,6 @@
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 @testable import Cursor_Studio
 
@@ -38,6 +41,45 @@ final class MarketplaceTests: XCTestCase {
             filters: MarketplaceFilters()
         )
         XCTAssertEqual(named.first?.id, all[0].id)
+    }
+
+    @MainActor
+    func testOpeningThemeDetailsLoadsValidatedCursorGallery() async throws {
+        let paths = ApplicationPaths(rootDirectory: temporaryDirectory)
+        let store = ThemeStore(paths: paths)
+        try store.load()
+
+        let defaultsSuite = "CursorStudioMarketplaceGalleryTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuite))
+        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+
+        let service = MockMarketplaceService()
+        let themes = try await service.featuredThemes()
+        let theme = try XCTUnwrap(themes.first)
+        let model = MarketplaceViewModel(
+            store: store,
+            paths: paths,
+            preferences: AppPreferences(
+                defaults: defaults,
+                launchAtLoginOverride: false
+            ),
+            service: service
+        )
+
+        model.openDetails(for: theme)
+        for _ in 0..<200 where model.isLoadingCursorPreviews {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(model.details?.theme.id, theme.id)
+        XCTAssertFalse(model.isLoadingCursorPreviews)
+        XCTAssertNil(model.cursorPreviewMessage)
+        XCTAssertFalse(model.cursorPreviews.isEmpty)
+        XCTAssertTrue(
+            model.cursorPreviews.allSatisfy {
+                FileManager.default.fileExists(atPath: $0.assetURL.path)
+            }
+        )
     }
 
     func testSupabaseCatalogDecodesCurrentVersionAsObject() throws {
@@ -294,6 +336,179 @@ final class MarketplaceTests: XCTestCase {
         XCTAssertEqual(validated.manifest.themeID, remoteThemeID)
         XCTAssertEqual(validated.manifest.semanticVersion, "1.0.0")
         XCTAssertFalse(validated.manifest.cursors.isEmpty)
+    }
+
+    @MainActor
+    func testAnimatedCursorSurvivesMarketplacePublishAndInstall() async throws {
+        let paths = ApplicationPaths(rootDirectory: temporaryDirectory)
+        try paths.createDirectories()
+        let localThemeID = UUID()
+        let localAssets = paths.assetsDirectory(for: localThemeID)
+        try FileManager.default.createDirectory(
+            at: localAssets,
+            withIntermediateDirectories: true
+        )
+        let previewFilename = "animated-preview.png"
+        let representationFilename = "animated-strip.png"
+        try writePNG(
+            width: 16,
+            height: 16,
+            to: localAssets.appending(path: previewFilename)
+        )
+        try writePNG(
+            width: 16,
+            height: 32,
+            to: localAssets.appending(path: representationFilename)
+        )
+        let localTheme = CursorTheme(
+            id: localThemeID,
+            name: "Animated Marketplace Theme",
+            previewAssetFilename: previewFilename,
+            entries: [
+                CursorEntry(
+                    role: .arrow,
+                    assetFilename: previewFilename,
+                    pixelWidth: 16,
+                    pixelHeight: 16,
+                    hotspot: CursorHotspot(
+                        normalizedX: 0.25,
+                        normalizedY: 0.25
+                    ),
+                    pointWidth: 16,
+                    pointHeight: 16,
+                    frameCount: 2,
+                    frameDuration: 0.08,
+                    representations: [
+                        CursorRepresentation(
+                            filename: representationFilename,
+                            scale: 1,
+                            pixelWidth: 16,
+                            pixelHeight: 32
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        let prepared = try MarketplacePackageBuilder(paths: paths).prepare(
+            theme: localTheme,
+            remoteThemeID: UUID(),
+            semanticVersion: "1.0.0"
+        )
+        defer { try? FileManager.default.removeItem(at: prepared.cleanupDirectory) }
+        let publishedCursor = try XCTUnwrap(prepared.manifest.cursors.first)
+        XCTAssertEqual(publishedCursor.frameCount, 2)
+        XCTAssertEqual(
+            try XCTUnwrap(publishedCursor.frameDuration),
+            0.08,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(publishedCursor.representations?.count, 1)
+
+        let validated = try await MarketplacePackageValidator(paths: paths)
+            .validatePackage(
+                at: prepared.packageURL,
+                expectedSHA256: prepared.packageSHA256
+            )
+        defer {
+            if let cleanup = validated.cleanupDirectory {
+                try? FileManager.default.removeItem(at: cleanup)
+            }
+        }
+        let packagePreviews = MarketplacePackagePreviewBuilder.previews(
+            from: validated
+        )
+        let arrowPreview = try XCTUnwrap(
+            packagePreviews.first(where: { $0.role == .arrow })
+        )
+        XCTAssertEqual(packagePreviews.count, 1)
+        XCTAssertEqual(arrowPreview.frameCount, 2)
+        XCTAssertEqual(arrowPreview.pixelWidth, 16)
+        XCTAssertEqual(arrowPreview.pixelHeight, 16)
+        XCTAssertNotNil(arrowPreview.animationStripURL)
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: arrowPreview.assetURL.path
+            )
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: try XCTUnwrap(arrowPreview.animationStripURL).path
+            )
+        )
+        let store = ThemeStore(paths: paths)
+        try store.load()
+        let installed = try MarketplaceInstaller(
+            store: store,
+            paths: paths
+        ).install(validated)
+        let installedArrow = try XCTUnwrap(installed.entry(for: .arrow))
+
+        XCTAssertTrue(installedArrow.isAnimated)
+        XCTAssertEqual(installedArrow.frameCount, 2)
+        XCTAssertEqual(installedArrow.frameDuration, 0.08, accuracy: 0.0001)
+        XCTAssertEqual(installedArrow.representations.count, 1)
+        let installedRepresentation = try XCTUnwrap(
+            installedArrow.representations.first
+        )
+        let installedStripURL = try XCTUnwrap(
+            paths.assetURL(
+                themeID: installed.id,
+                filename: installedRepresentation.filename
+            )
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: installedStripURL.path
+            )
+        )
+        let previewFrames = try XCTUnwrap(
+            CursorAnimationFrameLoader.loadImages(
+                at: installedStripURL,
+                frameCount: installedArrow.frameCount
+            )
+        )
+        XCTAssertEqual(previewFrames.count, 2)
+        XCTAssertTrue(
+            previewFrames.allSatisfy {
+                $0.size == NSSize(width: 16, height: 16)
+            }
+        )
+    }
+
+    private func writePNG(width: Int, height: Int, to url: URL) throws {
+        let colorSpace = try XCTUnwrap(
+            CGColorSpace(name: CGColorSpace.sRGB)
+        )
+        let context = try XCTUnwrap(
+            CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        )
+        context.setFillColor(
+            CGColor(
+                colorSpace: colorSpace,
+                components: [0.2, 0.6, 0.95, 1]
+            )!
+        )
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let image = try XCTUnwrap(context.makeImage())
+        let destination = try XCTUnwrap(
+            CGImageDestinationCreateWithURL(
+                url as CFURL,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+            )
+        )
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
     }
 }
 

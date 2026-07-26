@@ -15,7 +15,7 @@ Accessibility to move the cursor.
 
 ## Current version
 
-- Cursor Studio 1.6.
+- Cursor Studio 1.8.
 - Native Swift 6 and SwiftUI interface for macOS 15 or later.
 - Local theme library with create, rename, duplicate, and delete.
 - Partial themes: roles with no custom image continue using macOS defaults.
@@ -29,6 +29,16 @@ Accessibility to move the cursor.
 - Animated Mousecape cursors with up to 24 frames are registered as animations;
   larger animations retain their metadata and use a clearly marked first-frame
   fallback.
+- Live animated previews in the theme grid and inspector for Mousecape,
+  Windows ANI, and Marketplace themes, with Reduce Motion support.
+- Theme quality badges show configured roles, animations, and static fallbacks
+  at a glance.
+- Contextual native sidebar navigation for the local Library and Marketplace,
+  with one toolbar search field that adapts to the current section.
+- Marketplace detail sheets validate the installable package and preview every
+  included static or animated cursor before installation.
+- System Settings-style preferences for general behavior, cursor recovery,
+  Marketplace, privacy, and app information.
 - Windows CUR hotspots and multi-resolution representations are preserved.
   RIFF ACON/ANI timing and frame order use the same animation-strip format as
   `.cape`.
