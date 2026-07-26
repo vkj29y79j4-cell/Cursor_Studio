@@ -17,6 +17,15 @@ struct CursorStudioApp: App {
                 }
                 .keyboardShortcut("i", modifiers: .command)
 
+                Button(L10n.exportTheme) {
+                    model.exportSelectedTheme()
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(
+                    model.selectedTheme?.entries.isEmpty != false
+                        || model.isExportingTheme
+                )
+
                 Button(L10n.duplicateTheme) {
                     model.duplicateSelectedTheme()
                 }

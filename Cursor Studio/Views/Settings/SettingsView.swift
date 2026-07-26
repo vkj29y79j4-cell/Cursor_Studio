@@ -154,7 +154,7 @@ private struct GeneralSettingsView: View {
                     )
                 ) {
                     Toggle(
-                        "",
+                        L10n.launchAtLogin,
                         isOn: Binding(
                             get: { preferences.launchAtLogin },
                             set: { enabled in
@@ -177,7 +177,7 @@ private struct GeneralSettingsView: View {
                     )
                 ) {
                     Toggle(
-                        "",
+                        L10n.keepCursorActive,
                         isOn:
                             $preferences.keepCursorActiveWhenWindowClosed
                     )
@@ -196,7 +196,7 @@ private struct GeneralSettingsView: View {
                     detail: L10n.keepCursorActiveAfterAppQuitDetail
                 ) {
                     Toggle(
-                        "",
+                        L10n.keepCursorActiveAfterAppQuit,
                         isOn:
                             $preferences.keepCursorActiveAfterAppQuit
                     )
@@ -215,7 +215,7 @@ private struct GeneralSettingsView: View {
                     )
                 ) {
                     Toggle(
-                        "",
+                        L10n.confirmBeforeDeleting,
                         isOn:
                             $preferences.confirmBeforeDeletingTheme
                     )
@@ -245,7 +245,7 @@ private struct GeneralSettingsView: View {
         ) {
             Button(L10n.ok) { settingError = nil }
         } message: {
-            Text(settingError ?? "")
+            Text(verbatim: settingError ?? "")
         }
     }
 
@@ -326,7 +326,7 @@ private struct CursorSettingsView: View {
                     )
                 ) {
                     Toggle(
-                        "",
+                        L10n.autoRecoverCursor,
                         isOn: $preferences.autoRecoverCursor
                     )
                     .labelsHidden()
@@ -446,7 +446,7 @@ private struct MarketplaceSettingsView: View {
                     )
                 ) {
                     Toggle(
-                        "",
+                        L10n.verifiedOnly,
                         isOn: $preferences.verifiedOnly
                     )
                     .labelsHidden()
@@ -465,7 +465,7 @@ private struct MarketplaceSettingsView: View {
                     color: .secondary
                 ) {
                     Toggle(
-                        "",
+                        L10n.automaticUpdates,
                         isOn: $preferences.marketplaceAutoUpdates
                     )
                     .labelsHidden()

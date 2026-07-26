@@ -155,7 +155,7 @@ struct MarketplaceView: View {
                 model.dismissError()
             }
         } message: {
-            Text(model.errorMessage ?? "")
+            Text(verbatim: model.errorMessage ?? "")
         }
     }
 

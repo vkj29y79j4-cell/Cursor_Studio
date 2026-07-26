@@ -15,12 +15,15 @@ Accessibility to move the cursor.
 
 ## Current version
 
-- Cursor Studio 1.8.
+- Cursor Studio 1.9.
 - Native Swift 6 and SwiftUI interface for macOS 15 or later.
 - Local theme library with create, rename, duplicate, and delete.
 - Partial themes: roles with no custom image continue using macOS defaults.
 - PNG, Mousecape `.cape`, Windows `.cur`, Windows `.ani`, Windows cursor
   folders, and ZIP theme import from the same file picker or drag and drop.
+- Portable `.cursorstudio-theme` export and import preserves every configured
+  role, hotspot, point size, Retina representation, animation, and author.
+  Shared themes use the same hardened package validator as Marketplace.
 - Imported files are validated, re-encoded, and copied into Application
   Support under collision-resistant names.
 - Transactional `.cape` review with role mapping, Retina representations,
@@ -108,14 +111,19 @@ sandboxed shells can compile the suite but may be unable to launch it.
 
 1. Create or select a theme.
 2. Select a cursor role.
-3. Drop a PNG onto the role card, or import a `.cape`, `.cur`, `.ani`, Windows
-   theme folder, or ZIP to create a new theme.
+3. Drop a PNG onto the role card, or import a `.cape`, `.cur`, `.ani`,
+   `.cursorstudio-theme`, Windows theme folder, or ZIP to create a new theme.
    Review mapped roles, unassigned roles, and warnings before committing it.
 4. Click the enlarged image to set its hotspot.
 5. Choose **Apply Theme**. The active theme is reapplied while Cursor Studio is
    open.
 6. Choose **Restore macOS Cursor** at any time to remove all custom
    registrations. Restore does not require the imported theme to still exist.
+
+To share a local theme, select it and choose **Export Theme…** from the
+toolbar, its sidebar context menu, or the File menu. The recipient imports the
+result through the normal Import command and reviews it before adding it to
+their library.
 
 Theme data is stored in:
 

@@ -55,7 +55,7 @@ struct MarketplaceAccountView: View {
                 model.errorMessage = nil
             }
         } message: {
-            Text(model.errorMessage ?? "")
+            Text(verbatim: model.errorMessage ?? "")
         }
     }
 }

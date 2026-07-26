@@ -84,6 +84,20 @@ struct ContentView: View {
                     .disabled(model.isPreparingThemeImport)
 
                     Button {
+                        model.exportSelectedTheme()
+                    } label: {
+                        Label(
+                            L10n.exportTheme,
+                            systemImage: "square.and.arrow.up"
+                        )
+                    }
+                    .help(L10n.exportThemeHelp)
+                    .disabled(
+                        model.selectedTheme?.entries.isEmpty != false
+                            || model.isExportingTheme
+                    )
+
+                    Button {
                         Task { await model.applySelectedTheme() }
                     } label: {
                         Label(L10n.apply, systemImage: "cursorarrow.rays")
@@ -115,6 +129,7 @@ struct ContentView: View {
         .fileImporter(
             isPresented: $isImporterPresented,
             allowedContentTypes: [
+                .cursorStudioThemePackage,
                 .png,
                 .svg,
                 .mousecapeTheme,
@@ -224,6 +239,11 @@ struct ContentView: View {
 }
 
 private extension UTType {
+    static let cursorStudioThemePackage =
+        UTType(
+            filenameExtension:
+                CursorStudioThemeArchiveService.pathExtension
+        ) ?? .data
     static let mousecapeTheme =
         UTType(filenameExtension: "cape") ?? .propertyList
     static let windowsCursor =

@@ -139,7 +139,9 @@ nonisolated struct MarketplacePackageBuilder: @unchecked Sendable {
                 themeID: remoteThemeID,
                 name: theme.name,
                 semanticVersion: semanticVersion,
-                cursors: manifestCursors
+                cursors: manifestCursors,
+                author: theme.importMetadata?.author,
+                exportedAt: .now
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

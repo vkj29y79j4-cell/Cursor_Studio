@@ -142,6 +142,11 @@ struct ThemeSidebarView: View {
                                     model.selectedThemeID = theme.id
                                     model.duplicateSelectedTheme()
                                 }
+                                Button(L10n.exportTheme) {
+                                    model.selectedThemeID = theme.id
+                                    model.exportSelectedTheme()
+                                }
+                                .disabled(theme.entries.isEmpty)
                                 Divider()
                                 Button(
                                     L10n.delete,

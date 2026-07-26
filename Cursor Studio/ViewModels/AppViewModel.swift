@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import UniformTypeIdentifiers
 
 enum CursorOperationState: Equatable {
     case idle
@@ -55,6 +56,7 @@ final class AppViewModel: ObservableObject {
     @Published var themeImportDraft: ThemeImportDraft?
     @Published private(set) var moderationTestVersionID: UUID?
     @Published private(set) var isPreparingThemeImport = false
+    @Published private(set) var isExportingTheme = false
     @Published private(set) var importRequest = 0
     @Published private(set) var themeNameFocusRequest = 0
 
@@ -66,6 +68,8 @@ final class AppViewModel: ObservableObject {
     private let importer: ImageImportService
     private let capeImporter: CapeImportService
     private let windowsImporter: WindowsCursorImportService
+    private let themeArchiveService: CursorStudioThemeArchiveService
+    private let themeArchiveInstaller: MarketplaceInstaller
     private let cursorApplier: any SystemCursorApplying
     private let diagnostics: DiagnosticLogger
     private var monitor: CursorReapplicationMonitor?
@@ -147,6 +151,13 @@ final class AppViewModel: ObservableObject {
         self.capeImporter = capeImporter ?? CapeImportService(paths: paths)
         self.windowsImporter = windowsImporter
             ?? WindowsCursorImportService(paths: paths)
+        themeArchiveService = CursorStudioThemeArchiveService(
+            paths: paths
+        )
+        themeArchiveInstaller = MarketplaceInstaller(
+            store: store,
+            paths: paths
+        )
         self.cursorApplier = cursorApplier
         self.diagnostics = diagnostics
         self.preferences = preferences
@@ -366,6 +377,43 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func exportSelectedTheme() {
+        guard let selectedTheme,
+              !selectedTheme.entries.isEmpty,
+              !isExportingTheme else {
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.title = L10n.exportTheme
+        panel.message = L10n.exportThemeDetail
+        panel.prompt = L10n.exportAction
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.allowedContentTypes = [
+            UTType(
+                filenameExtension:
+                    CursorStudioThemeArchiveService.pathExtension
+            ) ?? .data,
+        ]
+        panel.nameFieldStringValue =
+            CursorStudioThemeArchiveService.suggestedFilename(
+                for: selectedTheme
+            )
+
+        panel.begin { [weak self] response in
+            guard response == .OK, let destination = panel.url else {
+                return
+            }
+            Task { @MainActor [weak self] in
+                await self?.performThemeExport(
+                    selectedTheme,
+                    to: destination
+                )
+            }
+        }
+    }
+
     func deleteSelectedTheme() async {
         guard let selectedThemeID else { return }
         do {
@@ -414,7 +462,9 @@ final class AppViewModel: ObservableObject {
     }
 
     func importFile(from url: URL, for role: CursorRole? = nil) {
-        if CapeImportService.canImport(url) {
+        if CursorStudioThemeArchiveService.canImport(url) {
+            prepareThemeArchiveImport(from: url)
+        } else if CapeImportService.canImport(url) {
             prepareCapeImport(from: url)
         } else if WindowsCursorImportService.canImport(url) {
             prepareWindowsImport(from: url)
@@ -426,14 +476,12 @@ final class AppViewModel: ObservableObject {
     func cancelThemeImport() {
         guard let draft = themeImportDraft else { return }
         themeImportDraft = nil
-        Task {
-            if draft.theme.importMetadata?.sourceFormat
-                .localizedCaseInsensitiveContains("Windows") == true {
-                await windowsImporter.discard(draft)
-            } else {
-                await capeImporter.discard(draft)
-            }
-        }
+        // Every importer hands ownership of an isolated staging directory to
+        // this common review flow, so cancellation does not need to identify
+        // or retain the original parser.
+        try? FileManager.default.removeItem(
+            at: draft.stagingThemeDirectory
+        )
     }
 
     func commitThemeImport() {
@@ -447,7 +495,7 @@ final class AppViewModel: ObservableObject {
                 L10n.importedRoles(theme.entries.count, theme: theme.name)
             )
         } catch {
-            diagnostics.record(operation: "commit-cape-import", error: error)
+            diagnostics.record(operation: "commit-theme-import", error: error)
             present(error, title: L10n.importFailed)
         }
     }
@@ -577,6 +625,80 @@ final class AppViewModel: ObservableObject {
                 operationState = .failure(L10n.themeImportFailed)
                 present(error, title: L10n.importFailed)
             }
+        }
+    }
+
+    private func prepareThemeArchiveImport(from url: URL) {
+        guard !isPreparingThemeImport,
+              themeImportDraft == nil else {
+            return
+        }
+        isPreparingThemeImport = true
+        operationState = .working(L10n.reading(url.lastPathComponent))
+
+        Task {
+            var cleanupURL: URL?
+            defer {
+                isPreparingThemeImport = false
+                if let cleanupURL {
+                    try? FileManager.default.removeItem(at: cleanupURL)
+                }
+            }
+            do {
+                let package = try await themeArchiveService
+                    .validateImport(from: url)
+                cleanupURL = package.cleanupDirectory
+                let draft = try themeArchiveInstaller.prepareImport(
+                    package,
+                    sourceFormat: L10n.cursorStudioThemePackage
+                )
+                themeImportDraft = draft
+                operationState = .success(
+                    L10n.themePackageReadyForReview
+                )
+            } catch {
+                diagnostics.record(
+                    operation: "prepare-theme-archive-import",
+                    error: error
+                )
+                operationState = .failure(
+                    L10n.themePackageImportFailed
+                )
+                present(error, title: L10n.importFailed)
+            }
+        }
+    }
+
+    private func performThemeExport(
+        _ theme: CursorTheme,
+        to destination: URL
+    ) async {
+        guard !isExportingTheme else { return }
+        isExportingTheme = true
+        operationState = .working(L10n.exportingTheme(theme.name))
+        defer { isExportingTheme = false }
+
+        do {
+            let receipt = try await themeArchiveService.export(
+                theme: theme,
+                to: destination
+            )
+            operationState = .success(
+                L10n.themeExported(
+                    theme.name,
+                    bytes: receipt.byteCount
+                )
+            )
+            NSWorkspace.shared.activateFileViewerSelecting([
+                receipt.url,
+            ])
+        } catch {
+            diagnostics.record(
+                operation: "export-theme-archive",
+                error: error
+            )
+            operationState = .failure(L10n.themeExportFailed)
+            present(error, title: L10n.themeExportFailed)
         }
     }
 

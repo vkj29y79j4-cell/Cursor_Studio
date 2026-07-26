@@ -74,8 +74,25 @@ nonisolated enum L10n {
         "Импортировать изображение курсора…"
     )
     static let importHelp = text(
-        "Import PNG, SVG, Mousecape, or Windows cursor themes",
-        "Импортировать PNG, SVG, Mousecape или темы курсоров Windows"
+        "Import PNG, Mousecape, Windows, or Cursor Studio themes",
+        "Импортировать PNG, Mousecape, Windows или темы Cursor Studio"
+    )
+    static let exportTheme = text(
+        "Export Theme…",
+        "Экспортировать тему…"
+    )
+    static let exportThemeDetail = text(
+        "Save a portable package with every cursor, hotspot, Retina representation, and animation.",
+        "Сохраните переносимый пакет со всеми курсорами, активными точками, Retina-вариантами и анимациями."
+    )
+    static let exportAction = text("Export", "Экспортировать")
+    static let exportThemeHelp = text(
+        "Export the selected theme as a portable Cursor Studio package",
+        "Экспортировать выбранную тему как переносимый пакет Cursor Studio"
+    )
+    static let cursorStudioThemePackage = text(
+        "Cursor Studio Theme Package",
+        "Пакет темы Cursor Studio"
     )
     static let apply = text("Apply", "Применить")
     static let applyTheme = text("Apply Theme", "Применить тему")
@@ -767,6 +784,18 @@ nonisolated enum L10n {
         "Theme import failed",
         "Ошибка импорта темы"
     )
+    static let themePackageReadyForReview = text(
+        "Theme package is ready for review",
+        "Пакет темы готов к проверке"
+    )
+    static let themePackageImportFailed = text(
+        "Theme package import failed",
+        "Не удалось импортировать пакет темы"
+    )
+    static let themeExportFailed = text(
+        "Theme Export Failed",
+        "Ошибка экспорта темы"
+    )
     static let restoringAfterEdit = text(
         "Restoring macOS cursor after edit…",
         "Восстановление курсора macOS после изменения…"
@@ -903,6 +932,27 @@ nonisolated enum L10n {
 
     static func reading(_ filename: String) -> String {
         text("Reading \(filename)…", "Чтение \(filename)…")
+    }
+
+    static func exportingTheme(_ name: String) -> String {
+        text(
+            "Exporting “\(name)”…",
+            "Экспорт темы «\(name)»…"
+        )
+    }
+
+    static func themeExported(
+        _ name: String,
+        bytes: Int64
+    ) -> String {
+        let size = ByteCountFormatter.string(
+            fromByteCount: bytes,
+            countStyle: .file
+        )
+        return text(
+            "Exported “\(name)” (\(size))",
+            "Тема «\(name)» экспортирована (\(size))"
+        )
     }
 
     static func applying(_ theme: String) -> String {

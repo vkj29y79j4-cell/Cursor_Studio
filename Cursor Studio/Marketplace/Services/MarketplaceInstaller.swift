@@ -19,6 +19,24 @@ final class MarketplaceInstaller {
     }
 
     func install(_ package: ValidatedMarketplacePackage) throws -> CursorTheme {
+        let draft = try prepareImport(package)
+        do {
+            return try store.commitImportedTheme(draft)
+        } catch {
+            try? fileManager.removeItem(
+                at: draft.stagingThemeDirectory
+            )
+            throw error
+        }
+    }
+
+    /// Converts a validated, declarative package into the common import draft.
+    /// Marketplace installs can commit it immediately, while local archive
+    /// imports can show the same review sheet as Mousecape and Windows themes.
+    func prepareImport(
+        _ package: ValidatedMarketplacePackage,
+        sourceFormat: String = "Cursor Studio Marketplace"
+    ) throws -> ThemeImportDraft {
         let themeID = UUID()
         let stagingThemeDirectory = paths.importStagingDirectory.appending(
             path: "Install-\(UUID().uuidString)",
@@ -33,9 +51,9 @@ final class MarketplaceInstaller {
             withIntermediateDirectories: true
         )
 
-        var committed = false
+        var prepared = false
         defer {
-            if !committed {
+            if !prepared {
                 try? fileManager.removeItem(at: stagingThemeDirectory)
             }
         }
@@ -95,8 +113,8 @@ final class MarketplaceInstaller {
                 cursor.usesStaticAnimationFallback == true || frameCount > 24
             let fallbackReason = usesStaticFallback
                 ? L10n.text(
-                    "This Marketplace cursor has \(frameCount) frames and uses its first frame because macOS supports at most 24.",
-                    "В этом курсоре Маркетплейса \(frameCount) кадров; используется первый кадр, поскольку macOS поддерживает не более 24."
+                    "This packaged cursor has \(frameCount) frames and uses its first frame because macOS supports at most 24.",
+                    "В этом курсоре из пакета \(frameCount) кадров; используется первый кадр, поскольку macOS поддерживает не более 24."
                 )
                 : nil
             theme.setEntry(
@@ -120,8 +138,9 @@ final class MarketplaceInstaller {
             )
         }
         theme.importMetadata = ThemeImportMetadata(
-            sourceFormat: "Cursor Studio Marketplace",
+            sourceFormat: sourceFormat,
             sourceIdentifier: package.manifest.themeID.uuidString,
+            author: package.manifest.author,
             sourceVersion: package.manifest.semanticVersion,
             importedAt: .now,
             warnings: [],
@@ -131,10 +150,10 @@ final class MarketplaceInstaller {
             for: theme,
             in: stagingAssets
         )
-        let draft = CapeImportDraft(
+        let draft = ThemeImportDraft(
             theme: theme,
             stagingThemeDirectory: stagingThemeDirectory,
-            review: CapeImportReview(
+            review: ThemeImportReview(
                 themeName: theme.name,
                 recognizedRoleCount: theme.entries.count,
                 unrecognizedRoleCount: 0,
@@ -146,8 +165,7 @@ final class MarketplaceInstaller {
                 ).count
             )
         )
-        let installed = try store.commitCapeImport(draft)
-        committed = true
-        return installed
+        prepared = true
+        return draft
     }
 }

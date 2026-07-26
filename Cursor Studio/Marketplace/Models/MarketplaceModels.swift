@@ -173,6 +173,8 @@ nonisolated struct MarketplacePackageManifest: Codable, Hashable, Sendable {
     var name: String
     var semanticVersion: String
     var cursors: [MarketplacePackageCursor]
+    var author: String? = nil
+    var exportedAt: Date? = nil
 }
 
 nonisolated struct MarketplacePackageCursor: Codable, Hashable, Sendable {
