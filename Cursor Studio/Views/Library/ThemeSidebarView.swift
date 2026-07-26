@@ -5,6 +5,7 @@ struct ThemeSidebarView: View {
     @ObservedObject var marketplaceModel: MarketplaceViewModel
     let libraryQuery: String
     let onShowMarketplaceAccount: () -> Void
+    @State private var sidebarSelection: Selection?
 
     private enum Selection: Hashable {
         case library
@@ -68,49 +69,48 @@ struct ThemeSidebarView: View {
         }
     }
 
-    private var selection: Binding<Selection?> {
-        Binding {
-            switch model.selectedSection {
-            case .library:
-                if let selectedThemeID = model.selectedThemeID {
-                    return .theme(selectedThemeID)
-                }
-                return .library
-            case .marketplace:
-                if let category = marketplaceModel.filters.category {
-                    return .marketplaceCategory(category)
-                }
-                return .marketplaceSort(
-                    marketplaceModel.filters.sort.rawValue
-                )
+    private var modelSelection: Selection {
+        switch model.selectedSection {
+        case .library:
+            if let selectedThemeID = model.selectedThemeID {
+                return .theme(selectedThemeID)
             }
-        } set: { newValue in
-            guard let newValue else { return }
-            switch newValue {
-            case .library:
-                model.selectedSection = .library
-            case .marketplace:
-                model.selectedSection = .marketplace
-            case .theme(let themeID):
-                model.selectedThemeID = themeID
-                model.selectedSection = .library
-            case .marketplaceSort(let rawValue):
-                guard let sort = MarketplaceSort(rawValue: rawValue) else {
-                    return
-                }
-                model.selectedSection = .marketplace
-                marketplaceModel.filters.category = nil
-                marketplaceModel.selectSort(sort)
-            case .marketplaceCategory(let category):
-                model.selectedSection = .marketplace
-                marketplaceModel.selectCategory(category)
+            return .library
+        case .marketplace:
+            if let category = marketplaceModel.filters.category {
+                return .marketplaceCategory(category)
             }
+            return .marketplaceSort(
+                marketplaceModel.filters.sort.rawValue
+            )
+        }
+    }
+
+    private func applySelection(_ selection: Selection) {
+        switch selection {
+        case .library:
+            model.selectedSection = .library
+        case .marketplace:
+            model.selectedSection = .marketplace
+        case .theme(let themeID):
+            model.selectedThemeID = themeID
+            model.selectedSection = .library
+        case .marketplaceSort(let rawValue):
+            guard let sort = MarketplaceSort(rawValue: rawValue) else {
+                return
+            }
+            model.selectedSection = .marketplace
+            marketplaceModel.filters.category = nil
+            marketplaceModel.selectSort(sort)
+        case .marketplaceCategory(let category):
+            model.selectedSection = .marketplace
+            marketplaceModel.selectCategory(category)
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            List(selection: selection) {
+            List(selection: $sidebarSelection) {
                 Section {
                     Label(
                         L10n.library,
@@ -223,6 +223,31 @@ struct ThemeSidebarView: View {
                 }
             }
             .listStyle(.sidebar)
+            .onAppear {
+                sidebarSelection = modelSelection
+            }
+            .onChange(of: sidebarSelection) { _, newSelection in
+                guard let newSelection,
+                      newSelection != modelSelection else {
+                    return
+                }
+                // A List can write its selection while SwiftUI is updating
+                // the view hierarchy. Yield before publishing navigation
+                // changes through the observable view models.
+                Task { @MainActor in
+                    await Task.yield()
+                    guard sidebarSelection == newSelection else {
+                        return
+                    }
+                    applySelection(newSelection)
+                }
+            }
+            .onChange(of: modelSelection) { _, newSelection in
+                guard sidebarSelection != newSelection else {
+                    return
+                }
+                sidebarSelection = newSelection
+            }
 
             Divider()
 
